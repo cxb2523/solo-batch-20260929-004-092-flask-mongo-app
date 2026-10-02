@@ -17,3 +17,11 @@ select.form-control {
     -o-appearance: none;
     appearance: none;
 }
+
+/* Follow button visibility is driven by the current relationship state. */
+.follow-controls[data-relationship="self"] [data-state-form],
+.follow-controls[data-relationship="following"] [data-state-form]:not([data-state-form="following"]),
+.follow-controls[data-relationship="pending"] [data-state-form]:not([data-state-form="pending"]),
+.follow-controls[data-relationship="not_following"] [data-state-form]:not([data-state-form="not_following"]) {
+    display: none;
+}

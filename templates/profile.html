@@ -6,6 +6,24 @@
 
             <h1 class="mb-3">Welcome {{current_user.first_name + " " + current_user.last_name}}</h1>
 
+            <div class="card border-secondary bg-light mb-4">
+                <div class="card-body">
+                    <h2 class="h5 card-title">Follows</h2>
+                    <p class="mb-2">
+                        <a href="{{ url_for('user_profile', name=current_user.id) }}">
+                            View your public profile
+                        </a>
+                    </p>
+                    <form class="toggle-private-form form-inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button class="btn btn-outline-secondary btn-sm toggle-private-button"
+                                formaction="{{ url_for('toggle_private') }}">
+                            {{ 'Make account public' if current_user.is_private else 'Make account private' }}
+                        </button>
+                    </form>
+                </div>
+            </div>
+
             <div class="table-responsive">
                 <h2 class="my-3 text-muted">Your details</h2>
 

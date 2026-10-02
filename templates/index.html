@@ -14,6 +14,20 @@
                 <p>Don't have an account? <a href="{{ url_for('register') }}">Sign up here</a>.</p>
                 <hr class="my-3" />
                 {% endif %}
+                {% if current_user.is_authenticated %}
+                <h2 class="h4 mt-4">Your feed</h2>
+                {% for note in notes %}
+                <div class="card border border-muted bg-light rounded mb-3">
+                    <div class="card-body">
+                        <h3 class="card-title h5">{{ note.title }}</h3>
+                        <p class="card-text">{{ note.body }}</p>
+                        <p class="text-muted mb-0">{{ note.user_name }} &middot; {{ note.date_string }}</p>
+                    </div>
+                </div>
+                {% else %}
+                <p>Follow people from their <a href="{{ url_for('stats') }}">profile pages</a> to fill your feed.</p>
+                {% endfor %}
+                {% endif %}
                 </p>This is a template for a basic web app using Flask and MongoDB. It uses Flask-Login for authentication, Flask-Pymongo for the database connection, Flask-Bcrypt for password hashing and Flask-Talisman for security. The front end uses Bootstrap for styling.</p>
                 <p>The app features user verification by email, basic note recording and messaging between users with email notifications.</p>
                 <p>You can view the code in the GitHub repository at <a href="https://github.com/chriswilson1982/flask-mongo-app" title="GitHub link">github.com/chriswilson1982/flask-mongo-app</a>.</p>

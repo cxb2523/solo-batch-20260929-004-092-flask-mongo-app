@@ -154,4 +154,59 @@ $(document).ready(function() {
         $("button.first-delete").html("Hide the red button!");
     });
 
+
+    // Follow / unfollow buttons (AJAX with full form fallback: without JS the
+    // form simply POSTs and the view redirects back to the profile page).
+    $("div.follow-controls").on('click', 'button.follow-button', function(event) {
+        event.preventDefault();
+        var $controls = $("div.follow-controls");
+        var $form = $(this).closest('form');
+        var $error = $controls.find('.follow-error');
+        $error.attr('hidden', true);
+        $.ajax({
+            type: 'POST',
+            url: $form.attr('action'),
+            data: $form.serialize(),
+            headers: {'X-Requested-With': 'XMLHttpRequest'}
+        }).done(function(response) {
+            console.log(response);
+            // Swap the visible button without reloading the page.
+            $controls.attr('data-relationship', response.state);
+        }).fail(function(response) {
+            console.log(response);
+            var message = (response.responseJSON && response.responseJSON.error) ||
+                'Could not update follow status.';
+            $error.text(message).removeAttr('hidden');
+        });
+    });
+
+
+    // Approve / deny pending follow requests.
+    $(".approve-button, .deny-button").click(function(event) {
+        event.preventDefault();
+        var $button = $(this);
+        var $form = $button.closest('form');
+        $.ajax({
+            type: 'POST',
+            url: $form.attr('action'),
+            data: $form.serialize(),
+            headers: {'X-Requested-With': 'XMLHttpRequest'}
+        }).done(function() {
+            console.log('follow request updated');
+            $button.closest('.pending-row').remove();
+        }).fail(function(response) {
+            console.log(response);
+        });
+    });
+
+
+    // Toggle private account flag.
+    $(".toggle-private-button").click(function(event) {
+        event.preventDefault();
+        var $form = $(this).closest('form');
+        $.post($form.attr('action'), $form.serialize())
+            .done(function() { location.reload(true); })
+            .fail(function(response) { console.log(response); });
+    });
+
 });

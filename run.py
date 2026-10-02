@@ -1,7 +1,7 @@
 # MODULE IMPORTS
 
 # Flask modules
-from flask import Flask, render_template, request, url_for, request, redirect, abort
+from flask import Flask, render_template, request, url_for, request, redirect, abort, jsonify
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from flask_talisman import Talisman
 from flask_pymongo import PyMongo
@@ -18,8 +18,25 @@ import os
 
 # Local imports
 from user import User, Anonymous
+from user import (
+    FollowError,
+    FOLLOWS_COLLECTION,
+    STATE_FOLLOWING,
+    STATE_NOT_FOLLOWING,
+    STATE_PENDING,
+    STATE_SELF,
+    ensure_follow_indexes,
+    follow_state,
+    follow_user,
+    unfollow_user,
+    approve_follow,
+    deny_follow,
+    get_follow_counts,
+    get_pending_followers,
+    delete_user_relationships,
+)
 from message import Message
-from note import Note
+from note import Note, feed_notes
 from email_utility import send_email, send_registration_email, send_message_email
 from verification import confirm_token
 
@@ -38,6 +55,16 @@ app.config['PREFERRED_URL_SCHEME'] = "https"
 
 # Create Pymongo
 mongo = PyMongo(app)
+
+# Ensure the unique index that keeps follow edges single per user. Safe to
+# run repeatedly: MongoDB is a no-op when the index already exists.
+ensure_follow_indexes(mongo.db)
+
+# Denormalised counters kept on each user document. They are only ever
+# changed together with an edge write inside the follow service ($inc);
+# legacy documents missing these fields cause follow operations to fail
+# rather than silently recreating a fresh counter.
+USER_COUNTER_FIELDS = ("following_count", "followers_count")
 
 # Create Bcrypt
 bc = Bcrypt(app)
@@ -70,7 +97,12 @@ login_manager.login_view = "login"
 # Index
 @app.route('/')
 def index():
-    return render_template('index.html')
+    # Logged-in visitors get the follow feed; anonymous visitors see the
+    # public welcome page and are sent to the login page by any action.
+    notes = []
+    if current_user.is_authenticated:
+        notes = feed_notes(mongo.db, current_user.id)
+    return render_template('index.html', notes=notes)
 
 
 # Login
@@ -129,6 +161,11 @@ def register():
             # Create dictionary data to save to database
             user_data_to_save = new_user.dict()
             user_data_to_save['password'] = hashpass
+            # Counters start at zero and only ever move via $inc inside the
+            # follow service; their presence is what lets legacy documents be
+            # detected (missing field -> operation fails).
+            user_data_to_save['following_count'] = 0
+            user_data_to_save['followers_count'] = 0
 
             # Insert user record to database
             if users.insert_one(user_data_to_save):
@@ -179,6 +216,155 @@ def profile():
     notes = mongo.db.notes.find(
         {"user_id": current_user.id, "deleted": False}).sort("timestamp", -1)
     return render_template('profile.html', notes=notes, title=current_user.title)
+
+
+# Public profile of another user
+@app.route('/profile/<name>', methods=['GET'])
+def user_profile(name):
+    # Anonymous visitors are always redirected to the login page.
+    if not current_user.is_authenticated:
+        return redirect(url_for('login', next=request.path))
+
+    profile_user = mongo.db.users.find_one({"id": name}, {'_id': 0})
+    if profile_user is None:
+        abort(404)
+
+    target = User.make_from_dict(profile_user)
+    relationship = follow_state(mongo.db, current_user.id, target.id)
+    counts = get_follow_counts(mongo.db, target.id)
+    notes = mongo.db.notes.find(
+        {"user_id": target.id, "deleted": False}).sort("timestamp", -1)
+    pending_users = []
+    if relationship == STATE_SELF:
+        # Pending follow requests are only shown to the account owner.
+        pending_users = get_pending_followers(mongo.db, current_user.id)
+    return render_template(
+        'user_profile.html',
+        profile_user=target,
+        relationship=relationship,
+        counts=counts,
+        notes=notes,
+        pending_users=[User.make_from_dict(u) for u in pending_users])
+
+
+def _follow_redirect(target_id):
+    """Non-AJAX fallback: return to the profile page the form posted from."""
+    return redirect(url_for('user_profile', name=target_id))
+
+
+def _follow_response(target_id, state, error=None, status=200):
+    """AJAX callers receive JSON; form fallback callers are redirected."""
+    if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        payload = {"state": state, "target_id": target_id}
+        if error:
+            payload["error"] = error
+        return jsonify(payload), status
+    return _follow_redirect(target_id)
+
+
+# Follow a user (active edge, or pending request for private accounts)
+@app.route('/follow/<target_id>', methods=['POST'])
+@login_required
+def follow(target_id):
+    target = mongo.db.users.find_one({"id": target_id}, {'_id': 0})
+    if target is None:
+        abort(404)
+
+    # Four permission branches:
+    #   self       -> cannot follow yourself
+    #   following  -> already followed, stay idempotent
+    #   pending    -> request already waiting for approval
+    #   not follow -> create edge now, or a pending edge for private accounts
+    state = follow_state(mongo.db, current_user.id, target_id)
+    if state == STATE_SELF:
+        return _follow_response(target_id, state,
+                                error="You cannot follow yourself.", status=400)
+    try:
+        state = follow_user(mongo.db, current_user.id, target_id)
+    except FollowError as exc:
+        return _follow_response(target_id, state, error=str(exc), status=409)
+    return _follow_response(target_id, state)
+
+
+# Unfollow a user (also cancels a pending request)
+@app.route('/unfollow/<target_id>', methods=['POST'])
+@login_required
+def unfollow(target_id):
+    target = mongo.db.users.find_one({"id": target_id}, {'_id': 0})
+    if target is None:
+        abort(404)
+    try:
+        state = unfollow_user(mongo.db, current_user.id, target_id)
+    except FollowError as exc:
+        return _follow_response(target_id, STATE_NOT_FOLLOWING,
+                                error=str(exc), status=409)
+    return _follow_response(target_id, state)
+
+
+# Account owner approves a pending follow request
+@app.route('/approve_follow/<requester_id>', methods=['POST'])
+@login_required
+def approve(requester_id):
+    try:
+        state = approve_follow(mongo.db, current_user.id, requester_id)
+    except FollowError as exc:
+        return _follow_response(current_user.id, STATE_PENDING,
+                                error=str(exc), status=409)
+    if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({"state": state, "requester_id": requester_id}), 200
+    return redirect(url_for('user_profile', name=current_user.id))
+
+
+# Account owner rejects a pending follow request
+@app.route('/deny_follow/<requester_id>', methods=['POST'])
+@login_required
+def deny(requester_id):
+    deny_follow(mongo.db, current_user.id, requester_id)
+    if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({"state": STATE_NOT_FOLLOWING,
+                        "requester_id": requester_id}), 200
+    return redirect(url_for('user_profile', name=current_user.id))
+
+
+# Statistics page
+@app.route('/stats', methods=['GET'])
+def stats():
+    # Anonymous visitors are always redirected to the login page.
+    if not current_user.is_authenticated:
+        return redirect(url_for('login', next=request.path))
+    user_count = mongo.db.users.count_documents({})
+    note_count = mongo.db.notes.count_documents({"deleted": False})
+    follow_count = mongo.db[FOLLOWS_COLLECTION].aggregate([
+        {"$project": {"n": {"$size": {"$ifNull": ["$following", []]}}}},
+        {"$group": {"_id": None, "total": {"$sum": "$n"}}}
+    ])
+    edge_count = next(follow_count, {}).get("total", 0)
+    pending_count = mongo.db[FOLLOWS_COLLECTION].aggregate([
+        {"$project": {"n": {"$size": {"$ifNull": ["$pending_incoming", []]}}}},
+        {"$group": {"_id": None, "total": {"$sum": "$n"}}}
+    ])
+    pending_total = next(pending_count, {}).get("total", 0)
+    return render_template(
+        'stats.html',
+        user_count=user_count,
+        note_count=note_count,
+        follow_count=edge_count,
+        pending_count=pending_total)
+
+
+# Toggle private account flag
+@app.route('/toggle_private', methods=['POST'])
+@login_required
+def toggle_private():
+    user_data = mongo.db.users.find_one({"id": current_user.id}, {'_id': 0})
+    new_value = not bool(user_data.get('is_private', False))
+    mongo.db.users.update_one(
+        {"id": current_user.id},
+        {"$set": {"is_private": new_value}}
+    )
+    if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({"is_private": new_value}), 200
+    return redirect(url_for('profile'))
 
 
 # Messages
@@ -301,6 +487,9 @@ def delete_account():
     # Delete user details
     if mongo.db.users.delete_one({"id": user_id}):
         user_deleted = True
+        # Remove every follow edge touching this account and adjust the
+        # surviving users' counters.
+        delete_user_relationships(mongo.db, user_id)
         logout_user()
 
     # Delete notes
@@ -336,8 +525,11 @@ def is_safe_url(target):
 
 
 # Heroku environment
-if os.environ.get('APP_LOCATION') == 'heroku':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
-else:
-    app.run(host='localhost', port=8080, debug=True)
+if __name__ == '__main__':
+    # Guarded so `flask run` can import the module without starting a second
+    # server; `python run.py` keeps its previous behaviour.
+    if os.environ.get('APP_LOCATION') == 'heroku':
+        port = int(os.environ.get("PORT", 5000))
+        app.run(host="0.0.0.0", port=port)
+    else:
+        app.run(host='localhost', port=8080, debug=True)

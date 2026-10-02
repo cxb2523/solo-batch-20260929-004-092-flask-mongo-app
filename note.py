@@ -11,7 +11,10 @@ class Note():
         self.user_id = user_id
         self.user_name = user_name
         self.timestamp = datetime.utcnow()
-        self.date_string = self.timestamp.strftime("%-d %b %Y")
+        # Plain day (no zero padding) keeps this portable across platforms;
+        # "%-d" is a glibc extension and fails on Windows.
+        self.date_string = "%d %s %d" % (
+            self.timestamp.day, self.timestamp.strftime("%b"), self.timestamp.year)
         self.id = uuid.uuid4().hex if not id else id
         self.deleted = deleted
 
@@ -27,3 +30,23 @@ class Note():
             "id": self.id,
             "deleted": self.deleted
         }
+
+
+def feed_notes(db, user_id):
+    """Home page feed: notes written by users this user actively follows.
+
+    The author list comes from the independent ``follows`` collection (via the
+    user service) rather than an embedded array, so the feed reads the same
+    source of truth that follow/unfollow writes.
+    """
+    # Imported here to avoid a circular import at module load time.
+    from user import get_following
+
+    author_ids = get_following(db, user_id)
+    if not author_ids:
+        return []
+    return list(
+        db.notes.find(
+            {"user_id": {"$in": author_ids}, "deleted": False}
+        ).sort("timestamp", -1)
+    )

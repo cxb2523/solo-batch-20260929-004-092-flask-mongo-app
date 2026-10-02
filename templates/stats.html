@@ -1,0 +1,30 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="container">
+    <div class="row pt-5">
+        <div class="col-lg-6 mx-lg-auto">
+            <h1 class="mb-4">Site statistics</h1>
+            <table class="table table-striped">
+                <tbody>
+                    <tr>
+                        <th scope="row">Users</th>
+                        <td>{{ user_count }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Notes</th>
+                        <td>{{ note_count }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Active follow edges</th>
+                        <td>{{ follow_count }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Pending follow requests</th>
+                        <td>{{ pending_count }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

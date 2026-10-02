@@ -1,0 +1,97 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="container">
+    <div class="row pt-5">
+        <div class="col-lg-8 mx-lg-auto">
+
+            <h1 class="mb-1">{{ profile_user.display_name() }}</h1>
+            {% if profile_user.is_private %}
+            <span class="badge badge-secondary">Private account</span>
+            {% endif %}
+            <p class="text-muted">{{ profile_user.email }}</p>
+
+            <p class="lead">
+                <span class="badge badge-primary mr-2">Following {{ counts.following_count }}</span>
+                <span class="badge badge-info mr-2">Followers {{ counts.followers_count }}</span>
+                {% if counts.pending_count %}
+                <span class="badge badge-warning">{{ counts.pending_count }} pending</span>
+                {% endif %}
+            </p>
+
+            {% if relationship == "self" %}
+            <div class="card border-warning mb-4">
+                <div class="card-body">
+                    <h2 class="card-title h5">Pending follow requests ({{ pending_users|length }})</h2>
+                    {% if pending_users %}
+                    <ul class="list-group">
+                        {% for requester in pending_users %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center pending-row"
+                            data-requester-id="{{ requester.id }}">
+                            <span>{{ requester.display_name() }}</span>
+                            <span>
+                                <form class="approve-form d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button class="btn btn-success btn-sm approve-button"
+                                            formaction="{{ url_for('approve', requester_id=requester.id) }}">Approve</button>
+                                </form>
+                                <form class="deny-form d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button class="btn btn-outline-danger btn-sm deny-button"
+                                            formaction="{{ url_for('deny', requester_id=requester.id) }}">Deny</button>
+                                </form>
+                            </span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="mb-0 text-muted">No follow requests waiting for approval.</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <div class="follow-controls mb-4"
+                 data-target-id="{{ profile_user.id }}"
+                 data-relationship="{{ relationship }}">
+                <form class="follow-form d-inline" data-state-form="not_following">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-primary follow-button"
+                            formaction="{{ url_for('follow', target_id=profile_user.id) }}">Follow</button>
+                </form>
+
+                <form class="follow-form d-inline" data-state-form="pending">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-outline-secondary follow-button"
+                            formaction="{{ url_for('unfollow', target_id=profile_user.id) }}">
+                        Requested - cancel
+                    </button>
+                </form>
+
+                <form class="follow-form d-inline" data-state-form="following">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-outline-primary follow-button"
+                            formaction="{{ url_for('unfollow', target_id=profile_user.id) }}">Following - unfollow</button>
+                </form>
+
+                <p class="follow-error text-danger mt-2" hidden></p>
+            </div>
+            {% endif %}
+
+            <h2 class="text-muted h4">Notes by {{ profile_user.first_name }}</h2>
+            {% for note in notes %}
+            <div class="card border border-muted bg-light rounded mb-3">
+                <div class="card-body">
+                    <h3 class="card-title h5">{{ note.title }}</h3>
+                    <p class="card-text">{{ note.body }}</p>
+                </div>
+                <div class="card-footer bg-light">
+                    <p class="my-auto text-muted">{{ note.date_string }}</p>
+                </div>
+            </div>
+            {% else %}
+            <p>No notes to show.</p>
+            {% endfor %}
+
+        </div>
+    </div>
+</div>
+{% endblock %}
