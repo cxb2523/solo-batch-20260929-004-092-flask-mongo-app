@@ -1,0 +1,74 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="container">
+    <div class="row mb-5 pt-5">
+        <div class="col-lg-8">
+            <h1 class="mb-4">Site stats</h1>
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <div class="card bg-light text-center">
+                        <div class="card-body">
+                            <h2 class="card-title">{{ users_count }}</h2>
+                            <p class="card-text text-muted">Users</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card bg-light text-center">
+                        <div class="card-body">
+                            <h2 class="card-title">{{ notes_count }}</h2>
+                            <p class="card-text text-muted">Notes</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card bg-light text-center">
+                        <div class="card-body">
+                            <h2 class="card-title">{{ messages_count }}</h2>
+                            <p class="card-text text-muted">Messages</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card bg-light text-center">
+                        <div class="card-body">
+                            <h2 class="card-title">{{ follow_edges }}</h2>
+                            <p class="card-text text-muted">Follow relationships</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card bg-light text-center">
+                        <div class="card-body">
+                            <h2 class="card-title">{{ pending_count }}</h2>
+                            <p class="card-text text-muted">Pending follow requests</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <h2 class="my-4 text-muted">Most followed users</h2>
+            {% if top_followed %}
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>User</th>
+                        <th>Followers</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in top_followed %}
+                    <tr>
+                        <td>{{ entry.name }}</td>
+                        <td>{{ entry.followers }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="text-muted">No follow relationships yet.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

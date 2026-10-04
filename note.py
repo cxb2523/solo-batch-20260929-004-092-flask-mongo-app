@@ -11,7 +11,7 @@ class Note():
         self.user_id = user_id
         self.user_name = user_name
         self.timestamp = datetime.utcnow()
-        self.date_string = self.timestamp.strftime("%-d %b %Y")
+        self.date_string = self.timestamp.strftime("%d %b %Y").lstrip("0")
         self.id = uuid.uuid4().hex if not id else id
         self.deleted = deleted
 
@@ -27,3 +27,13 @@ class Note():
             "id": self.id,
             "deleted": self.deleted
         }
+
+    @staticmethod
+    def feed_for_user(db, user_id):
+        # Home page feed query: only notes whose authors the user follows.
+        follows = db.follows.find_one({"user_id": user_id}) or {}
+        following = follows.get("following", [])
+        if not following:
+            return []
+        return db.notes.find(
+            {"user_id": {"$in": following}, "deleted": False}).sort("timestamp", -1)

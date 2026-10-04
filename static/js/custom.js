@@ -139,6 +139,48 @@ $(document).ready(function() {
         }
     });
 
+    // Follow / unfollow (AJAX, no page refresh; forms still work without JS)
+    $("form.follow-form").submit(function(event) {
+        event.preventDefault();
+        var form = $(this);
+        var button = form.find("button.follow-button");
+        $.post(form.attr("action"), form.serialize())
+            .done(function(response) {
+                if (response.status === "active") {
+                    form.attr("action", "/unfollow/" + response.user_id);
+                    button.removeClass("btn-primary").addClass("btn-outline-danger");
+                    button.text("Unfollow");
+                } else if (response.status === "pending") {
+                    button.removeClass("btn-primary").addClass("btn-outline-secondary");
+                    button.text("Cancel request");
+                    form.attr("action", "/unfollow/" + response.user_id);
+                } else if (response.status === "none") {
+                    form.attr("action", "/follow/" + response.user_id);
+                    button.removeClass("btn-outline-danger btn-outline-secondary").addClass("btn-primary");
+                    button.text("Follow");
+                }
+                if (response.followers_count !== undefined && response.followers_count !== null) {
+                    $("#followers-count").text(response.followers_count);
+                }
+            })
+            .fail(function(response) {
+                console.log(response);
+            });
+    });
+
+    // Approve / decline follow requests (AJAX, removes the row on success)
+    $("form.follow-request-form").submit(function(event) {
+        event.preventDefault();
+        var form = $(this);
+        $.post(form.attr("action"), form.serialize())
+            .done(function(response) {
+                form.closest("li").remove();
+            })
+            .fail(function(response) {
+                console.log(response);
+            });
+    });
+
 
     // Toggle delete button
     $("div.delete-account").on('hide.bs.collapse', function() {

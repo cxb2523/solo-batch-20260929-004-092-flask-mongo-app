@@ -20,5 +20,26 @@
             </div>
         </div>
     </div>
+    {% if current_user.is_authenticated %}
+    <div class="row">
+        <div class="col-md-8 mx-md-auto pt-3">
+            <h2 class="mb-3">Your feed</h2>
+            {% for note in feed %}
+            <div class="card border border-muted bg-light rounded mb-3">
+                <div class="card-body">
+                    <h3 class="card-title">{{ note.title }}</h3>
+                    <p class="card-text">{{ note.body }}</p>
+                </div>
+                <div class="card-footer bg-light d-flex justify-content-between">
+                    <p class="my-auto text-muted">{{ note.user_name }}</p>
+                    <p class="my-auto text-muted">{{ note.date_string }}</p>
+                </div>
+            </div>
+            {% else %}
+            <p class="text-muted">Your feed is empty. Follow people to see their notes here.</p>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}

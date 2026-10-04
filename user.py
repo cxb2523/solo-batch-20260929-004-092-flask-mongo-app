@@ -4,7 +4,8 @@ import uuid
 
 # User class
 class User():
-    def __init__(self, title, first_name, last_name, email, id="", verified=False):
+    def __init__(self, title, first_name, last_name, email, id="", verified=False,
+                 is_private=False, followers_count=0, following_count=0):
         # Main initialiser
         self.title = title if title != "none" else ""
         self.first_name = first_name
@@ -12,11 +13,18 @@ class User():
         self.email = email
         self.id = uuid.uuid4().hex if not id else id
         self.verified = verified
+        self.is_private = is_private
+        self.followers_count = followers_count
+        self.following_count = following_count
 
     @classmethod
     def make_from_dict(cls, d):
         # Initialise User object from a dictionary
-        return cls(d['title'], d['first_name'], d['last_name'], d['email'], d['id'], d['verified'])
+        # Accesses follow-related fields strictly: legacy documents that are
+        # missing them raise KeyError, which callers treat as a failure (run
+        # scripts/backfill_follows.py to upgrade old documents).
+        return cls(d['title'], d['first_name'], d['last_name'], d['email'], d['id'],
+                   d['verified'], d['is_private'], d['followers_count'], d['following_count'])
 
     def dict(self):
         # Return dictionary representation of the object
@@ -26,7 +34,10 @@ class User():
             "first_name": self.first_name,
             "last_name": self.last_name,
             "email": self.email,
-            "verified": self.verified
+            "verified": self.verified,
+            "is_private": self.is_private,
+            "followers_count": self.followers_count,
+            "following_count": self.following_count
         }
 
     def display_name(self):
@@ -35,6 +46,10 @@ class User():
             return self.title + " " + self.first_name + " " + self.last_name
         else:
             return self.first_name + " " + self.last_name
+
+    def profile_name(self):
+        # Return URL-friendly slug used by the /profile/<name> route
+        return (self.first_name + "-" + self.last_name).lower().replace(" ", "-")
 
     @property
     def is_authenticated(self):

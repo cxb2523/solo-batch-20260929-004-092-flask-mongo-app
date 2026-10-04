@@ -1,0 +1,61 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="container">
+    <div class="row mb-5 pt-5">
+        <div class="col-lg-8">
+            <h1 class="mb-1">{{ profile_user.display_name() }}</h1>
+            {% if profile_user.is_private %}
+            <p class="text-muted"><i class="far fa-lock"></i> Private account</p>
+            {% endif %}
+
+            <p class="my-3">
+                <span class="mr-4"><strong id="followers-count">{{ profile_user.followers_count }}</strong> followers</span>
+                <span><strong id="following-count">{{ profile_user.following_count }}</strong> following</span>
+            </p>
+
+            {% if not current_user.is_authenticated %}
+            <a class="btn btn-primary" href="{{ url_for('login') }}">Log in to follow</a>
+            {% elif follow_state == 'self' %}
+            <p class="text-muted">This is your own profile.</p>
+            {% elif follow_state == 'active' %}
+            <form class="follow-form" method="post" action="{{ url_for('unfollow', user_id=profile_user.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-outline-danger follow-button">Unfollow</button>
+            </form>
+            {% elif follow_state == 'pending' %}
+            <p class="text-muted">Follow request pending approval.</p>
+            <form class="follow-form" method="post" action="{{ url_for('unfollow', user_id=profile_user.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-outline-secondary follow-button">Cancel request</button>
+            </form>
+            {% else %}
+            <form class="follow-form" method="post" action="{{ url_for('follow', user_id=profile_user.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-primary follow-button">
+                    {{ 'Request to follow' if profile_user.is_private else 'Follow' }}
+                </button>
+            </form>
+            {% endif %}
+
+            <h2 class="my-4 text-muted">Notes</h2>
+            {% for note in notes %}
+            <div class="card border border-muted bg-light rounded mb-3">
+                <div class="card-body">
+                    <h3 class="card-title">{{ note.title }}</h3>
+                    <p class="card-text">{{ note.body }}</p>
+                </div>
+                <div class="card-footer bg-light">
+                    <p class="my-auto text-muted">{{ note.date_string }}</p>
+                </div>
+            </div>
+            {% else %}
+            {% if profile_user.is_private and follow_state not in ['active', 'self'] %}
+            <p class="text-muted">This account is private. Follow it to see its notes.</p>
+            {% else %}
+            <p class="text-muted">No notes yet.</p>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
